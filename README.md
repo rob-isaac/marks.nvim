@@ -63,6 +63,9 @@ require'marks'.setup {
   excluded_filetypes = {},
   -- disables mark tracking for specific buftypes. default {}
   excluded_buftypes = {},
+  -- when true, bookmarks are auto-loaded on setup and auto-saved on VimLeavePre.
+  -- bookmarks are stored in a per-project file under stdpath('data'). default true.
+  bookmark_auto_save = true,
   -- marks.nvim allows you to configure up to 10 bookmark groups, each with its own
   -- sign/virttext. Bookmarks can be used to group together positions and quickly move
   -- across multiple buffers. default sign is '!@#$%^&*()' (from 0 to 9), and
@@ -212,6 +215,12 @@ There are also corresponding commands for those who prefer the quickfix list:
 `:BookmarksQFList group_number`
 
 `:BookmarksQFListAll`
+
+`:BookmarksSave [filepath]` Write all bookmarks to a JSON file.
+If no filepath is provided, uses the per-project default location.
+
+`:BookmarksLoad [filepath]` Restore bookmarks from a JSON file.
+If no filepath is provided, uses the per-project default location.
 
 ## See Also
 

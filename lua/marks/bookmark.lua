@@ -51,6 +51,16 @@ end
 
 function Bookmarks:place_mark(group_nr, bufnr)
   bufnr = bufnr or a.nvim_get_current_buf()
+  local pos = a.nvim_win_get_cursor(0)
+
+  self:place_mark_at(group_nr, bufnr, pos[1], pos[2])
+
+  if self.prompt_annotate[group_nr] then
+    self:annotate(group_nr)
+  end
+end
+
+function Bookmarks:place_mark_at(group_nr, bufnr, line, col)
   local group = self.groups[group_nr]
 
   if not group then
@@ -58,19 +68,32 @@ function Bookmarks:place_mark(group_nr, bufnr)
     group = self.groups[group_nr]
   end
 
-  local pos = a.nvim_win_get_cursor(0)
+  if line < 1 then
+    line = 1
+  end
+  col = math.max(col, 0)
 
-  if group.marks[bufnr] and group.marks[bufnr][pos[1]] then
+  local max_line = a.nvim_buf_line_count(bufnr)
+  if line > max_line then
+    line = max_line
+  end
+
+  local line_text = a.nvim_buf_get_lines(bufnr, line-1, line, true)[1] or ""
+  if col > #line_text then
+    col = #line_text
+  end
+
+  if group.marks[bufnr] and group.marks[bufnr][line] then
     -- disallow multiple bookmarks on a single line
     return
   end
 
-  local data = { buf = bufnr, line = pos[1], col = pos[2], sign_id = -1}
+  local data = { buf = bufnr, line = line, col = col, sign_id = -1}
 
   local display_signs = utils.option_nil(self.opt.buf_signs[bufnr], self.opt.signs)
   if display_signs and group.sign then
-    local id = group.sign:byte() * 100 + pos[1]
-    self:add_sign(bufnr, group.sign, pos[1], id)
+    local id = group.sign:byte() * 100 + line
+    self:add_sign(bufnr, group.sign, line, id)
     data.sign_id = id
   end
 
@@ -80,18 +103,14 @@ function Bookmarks:place_mark(group_nr, bufnr)
     opts.virt_text_pos = "eol"
   end
 
-  local extmark_id = a.nvim_buf_set_extmark(bufnr, group.ns, pos[1]-1, pos[2], opts)
+  local extmark_id = a.nvim_buf_set_extmark(bufnr, group.ns, line-1, col, opts)
 
   data.extmark_id = extmark_id
 
   if not group.marks[bufnr] then
     group.marks[bufnr] = {}
   end
-  group.marks[bufnr][pos[1]] = data
-
-  if self.prompt_annotate[group_nr] then
-    self:annotate(group_nr)
-  end
+  group.marks[bufnr][line] = data
 end
 
 function Bookmarks:toggle_mark(group_nr, bufnr)
@@ -356,6 +375,96 @@ end
 function Bookmarks:add_sign(bufnr, text, line, id)
   utils.add_sign(bufnr, text, line, id, "BookmarkSigns", self.priority)
 end
+
+function Bookmarks:clear_all()
+  for group_nr, _ in pairs(self.groups) do
+    self:delete_all(group_nr)
+  end
+end
+
+function Bookmarks:save_to_file(path)
+  if not path or path == "" then
+    return false, "bookmarks file path is required"
+  end
+
+  path = vim.fn.expand(path)
+  local parent_dir = vim.fn.fnamemodify(path, ":h")
+  if parent_dir ~= "" then
+    vim.fn.mkdir(parent_dir, "p")
+  end
+
+  local output = { version = 1, bookmarks = {} }
+
+  for group_nr, group in pairs(self.groups) do
+    for bufnr, buffer_marks in pairs(group.marks) do
+      local filename = a.nvim_buf_get_name(bufnr)
+      if filename ~= "" then
+        for _, mark in pairs(buffer_marks) do
+          table.insert(output.bookmarks, {
+            group = group_nr,
+            file = filename,
+            line = mark.line,
+            col = mark.col,
+          })
+        end
+      end
+    end
+  end
+
+  local encoded = vim.fn.json_encode(output)
+  local write_ok = pcall(vim.fn.writefile, { encoded }, path)
+  if not write_ok then
+    return false, "could not write bookmarks file: " .. path
+  end
+
+  return true, #output.bookmarks
+end
+
+function Bookmarks:restore_from_file(path)
+  if not path or path == "" then
+    return false, "bookmarks file path is required"
+  end
+
+  path = vim.fn.expand(path)
+
+  if vim.fn.filereadable(path) ~= 1 then
+    return false, "bookmarks file does not exist: " .. path
+  end
+
+  local read_ok, lines = pcall(vim.fn.readfile, path)
+  if not read_ok then
+    return false, "could not read bookmarks file: " .. path
+  end
+
+  local decode_ok, decoded = pcall(vim.fn.json_decode, table.concat(lines, "\n"))
+  if not decode_ok or type(decoded) ~= "table" then
+    return false, "invalid bookmarks file: " .. path
+  end
+
+  local bookmarks = decoded.bookmarks
+  if type(bookmarks) ~= "table" then
+    return false, "invalid bookmarks file format: " .. path
+  end
+
+  self:clear_all()
+
+  local restored = 0
+  for _, item in ipairs(bookmarks) do
+    if type(item) == "table" and type(item.group) == "number" and
+        type(item.file) == "string" and type(item.line) == "number" and
+        type(item.col) == "number" then
+      local bufnr = vim.fn.bufadd(item.file)
+      if bufnr ~= -1 then
+        vim.fn.bufload(bufnr)
+        self:place_mark_at(item.group, bufnr, item.line, item.col)
+        restored = restored + 1
+      end
+    end
+  end
+
+  return true, restored
+end
+
 
 function Bookmarks.new()
   return setmetatable({signs = {"!", "@", "#", "$", "%", "^", "&", "*", "(", [0]=")"},

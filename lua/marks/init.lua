@@ -3,6 +3,21 @@ local bookmark = require'marks.bookmark'
 local utils = require'marks.utils'
 local M = {}
 
+local function project_bookmarks_file()
+  local cwd = vim.loop.cwd() or vim.fn.getcwd()
+  local project_dir = vim.fn.fnamemodify(cwd, ":p")
+  local encoded_project = project_dir:gsub("[^%w%-_.]", "%%")
+  return vim.fn.stdpath("data") .. "/marks.nvim/bookmarks-" .. encoded_project .. ".json"
+end
+
+local function resolve_bookmark_path(path)
+  if path and path ~= "" then
+    return vim.fn.expand(path)
+  end
+
+  return M.project_bookmarks_file
+end
+
 function M.set()
   local err, input = pcall(function()
     return string.char(vim.fn.getchar())
@@ -135,6 +150,42 @@ function M.prev_bookmark()
   M.bookmark_state:prev()
 end
 
+function M.save_bookmarks(path, opts)
+  opts = opts or {}
+  local output_path = resolve_bookmark_path(path)
+  local ok, result = M.bookmark_state:save_to_file(output_path)
+  if not ok then
+    if not opts.silent then
+      vim.api.nvim_err_writeln("marks.nvim: " .. result)
+    end
+    return
+  end
+
+  if not opts.silent then
+    vim.api.nvim_echo({{"marks.nvim: saved " .. result .. " bookmarks", "Normal"}}, true, {})
+  end
+end
+
+function M.load_bookmarks(path, opts)
+  opts = opts or {}
+  local input_path = resolve_bookmark_path(path)
+  local ok, result = M.bookmark_state:restore_from_file(input_path)
+  if not ok then
+    if not opts.silent then
+      vim.api.nvim_err_writeln("marks.nvim: " .. result)
+    end
+    return
+  end
+
+  if not opts.silent then
+    vim.api.nvim_echo({{"marks.nvim: restored " .. result .. " bookmarks", "Normal"}}, true, {})
+  end
+end
+
+function M._auto_save_bookmarks()
+  M.save_bookmarks(nil, { silent = true })
+end
+
 M.mappings = {
   set = "m",
   set_next = "m,",
@@ -188,10 +239,19 @@ local function setup_autocommands()
     autocmd BufEnter * lua require'marks'.refresh(true)
     autocmd BufDelete * lua require'marks'._on_delete()
   augroup end]]
+
+  if M.bookmark_autosave then
+    vim.cmd [[augroup Marks_autocmds
+      autocmd VimLeavePre * lua require'marks'._auto_save_bookmarks()
+    augroup end]]
+  end
 end
 
 function M.setup(config)
   config = config or {}
+
+  M.bookmark_autosave = utils.option_nil(config.bookmark_auto_save, true)
+  M.project_bookmarks_file = project_bookmarks_file()
 
   M.mark_state = mark.new()
   M.mark_state.builtin_marks = config.builtin_marks or {}
@@ -233,6 +293,10 @@ function M.setup(config)
   config.default_mappings = utils.option_nil(config.default_mappings, true)
   setup_mappings(config)
   setup_autocommands()
+
+  if M.bookmark_autosave then
+    M.load_bookmarks(nil, { silent = true })
+  end
 
   M.mark_state.opt.signs = utils.option_nil(config.signs, true)
   M.mark_state.opt.buf_signs = {}

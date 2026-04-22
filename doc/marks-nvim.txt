@@ -140,6 +140,13 @@ plugin. The following options are defined:
     display any signs. Setting and moving to marks with ` or ' will still work, but
     movement commands like "m]" or "m[" will not.
 
+  bookmark_auto_save: bool                         *marks-bookmark_auto_save*
+    (default true)
+
+    When true, bookmarks are auto-loaded on setup and auto-saved on
+    |VimLeavePre|. The default file path is unique per project directory and
+    stored under |stdpath('data')|.
+
   bookmark_[0-9]: table                              *marks-bookmark_config*
     (default {})
 
@@ -349,6 +356,16 @@ There are also corresponding commands for those who prefer the quickfix list:
 *:BookmarksQFList* group_number
 
 *:BookmarksQFListAll*
+
+*:BookmarksSave* [filepath]
+
+Write all bookmarks to a JSON file. If filepath is omitted, a project-specific
+default location is used.
+
+*:BookmarksLoad* [filepath]
+
+Restore bookmarks from a JSON file. If filepath is omitted, the project-
+specific default location is used.
 
 ==============================================================================
 5. Contributing                                             *marks-contrib*

@@ -21,6 +21,8 @@ command! BookmarksListAll exe "lua require'marks'.bookmark_state:all_to_list()" 
 
 command! -nargs=1 BookmarksQFList exe "lua require'marks'.bookmark_state:to_list('quickfixlist', "..<args>..")" | copen
 command! BookmarksQFListAll exe "lua require'marks'.bookmark_state:all_to_list('quickfixlist')" | copen
+command! -nargs=? -complete=file BookmarksSave lua require'marks'.save_bookmarks(<q-args>)
+command! -nargs=? -complete=file BookmarksLoad lua require'marks'.load_bookmarks(<q-args>)
 
 nnoremap <Plug>(Marks-set) <cmd> lua require'marks'.set()<cr>
 nnoremap <Plug>(Marks-setnext) <cmd> lua require'marks'.set_next()<cr>
